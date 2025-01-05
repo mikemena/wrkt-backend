@@ -20,22 +20,68 @@ app.use(helmet());
 app.use('/images', express.static(path.join(__dirname, 'images')));
 
 // CORS - allow your local frontend in development
-app.use(
-  cors({
-    origin: ['http://localhost:3000', 'http://localhost:8081'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-  })
-);
+const corsOptions = {
+  origin:
+    process.env.NODE_ENV === 'production'
+      ? [
+          'https://wrkt.fitness', // Main domain
+          'https://www.wrkt.fitness', // Web app
+          'exp://localhost:19000', // Expo development
+          'your-app-scheme://' // Mobile app scheme
+        ]
+      : ['http://localhost:3000', 'http://localhost:8081'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+};
 
-// Basic rate limiting
-app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100
-  })
-);
+// Apply CORS with environment-specific options
+app.use(cors(corsOptions));
+
+// Rate limiting - stricter in production
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000
+});
+
+app.use(limiter);
+
+// Add security headers in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'"]
+        }
+      },
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      crossOriginEmbedderPolicy: false
+    })
+  );
+}
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({
+    message:
+      process.env.NODE_ENV === 'production'
+        ? 'Internal server error'
+        : err.message
+  });
+});
+
+// Logging based on environment
+if (process.env.NODE_ENV !== 'production') {
+  app.use((req, res, next) => {
+    console.log(`${req.method} ${req.path}`);
+    next();
+  });
+}
 
 // Import routes
 const imageRoutes = require('./routes/images');
@@ -68,4 +114,10 @@ app.use('/api', activeProgramRoutes);
 app.use('/api', progressRoutes);
 
 const PORT = process.env.PORT || 9025;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  if (process.env.NODE_ENV === 'production') {
+    console.log('Production URLs:');
+    console.log('- API URL: https://api.wrkt.fitness');
+  }
+});
