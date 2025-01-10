@@ -40,11 +40,11 @@ const corsOptions = {
       ? [
           'https://wrkt.fitness',
           'https://www.wrkt.fitness',
-          'https://api.wrkt.fitness', // Add API domain
+          'https://api.wrkt.fitness',
           'exp://localhost:19000',
           'your-app-scheme://',
-          /\.expo\.dev$/, // Allow Expo Go domains
-          /\.wrkt\.fitness$/ // Allow all subdomains
+          /\.expo\.dev$/,
+          /\.wrkt\.fitness$/
         ]
       : '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
