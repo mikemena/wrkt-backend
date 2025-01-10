@@ -24,14 +24,18 @@ const corsOptions = {
   origin:
     process.env.NODE_ENV === 'production'
       ? [
-          'https://wrkt.fitness', // Main domain
-          'https://www.wrkt.fitness', // Web app
-          'exp://localhost:19000', // Expo development
-          'your-app-scheme://' // Mobile app scheme
+          'https://wrkt.fitness',
+          'https://www.wrkt.fitness',
+          'https://api.wrkt.fitness', // Add API domain
+          'exp://localhost:19000',
+          'your-app-scheme://',
+          /\.expo\.dev$/, // Allow Expo Go domains
+          /\.wrkt\.fitness$/ // Allow all subdomains
         ]
-      : ['http://localhost:3000', 'http://localhost:8081'],
+      : '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cache-Control'],
+  exposedHeaders: ['ETag'],
   credentials: true
 };
 
