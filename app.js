@@ -14,7 +14,21 @@ if (process.env.NODE_ENV !== 'production') {
 app.use(express.json());
 
 // Security middleware
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        imgSrc: ["'self'", 'data:', 'https:', '*.r2.cloudflarestorage.com'],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        connectSrc: ["'self'", '*.r2.cloudflarestorage.com']
+      }
+    },
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginEmbedderPolicy: false
+  })
+);
 
 // Serve static files from the images directory
 app.use('/images', express.static(path.join(__dirname, 'images')));

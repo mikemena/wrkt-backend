@@ -19,6 +19,10 @@ const s3 = new AWS.S3({
 
 router.get('/exercise-catalog', async (req, res) => {
   try {
+    console.log('Received exercise catalog request');
+    // Test database connection
+    const testQuery = await db.query('SELECT COUNT(*) FROM exercise_catalog');
+    console.log('Total exercises in database:', testQuery.rows[0].count);
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const offset = (page - 1) * limit;
