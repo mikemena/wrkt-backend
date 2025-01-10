@@ -7,6 +7,7 @@ const path = require('path');
 
 // Load .env only in development
 if (process.env.NODE_ENV !== 'production') {
+  app.set('trust proxy', 1);
   require('dotenv').config();
 }
 
