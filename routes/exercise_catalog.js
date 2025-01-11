@@ -1,19 +1,37 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
-const AWS = require('aws-sdk');
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 require('dotenv').config();
 
 // Set up AWS S3 to interact with Cloudflare R2
 
-const s3 = new AWS.S3({
-  accessKeyId: process.env.R2_ACCESS_KEY,
-  secretAccessKey: process.env.R2_SECRET_KEY,
-  endpoint: process.env.R2_URL,
+const s3Client = new S3Client({
   region: 'auto',
-  signatureVersion: 'v4',
-  s3ForcePathStyle: true
+  endpoint: process.env.R2_URL,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY,
+    secretAccessKey: process.env.R2_SECRET_KEY
+  },
+  forcePathStyle: true
 });
+
+// Helper function for generating signed URLs
+
+const getPresignedUrl = async (bucket, key) => {
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key
+  });
+
+  return getSignedUrl(s3Client, command, {
+    expiresIn: 3600,
+
+    ResponseContentType: 'image/gif',
+    ResponseCacheControl: 'public, max-age=86400, stale-while-revalidate=43200'
+  });
+};
 
 // Endpoint to get all exercises in the catalog
 
@@ -92,28 +110,25 @@ router.get('/exercise-catalog', async (req, res) => {
     const { rows } = await db.query(query, [...queryParams, limit, offset]);
 
     // Generate presigned URLs with longer expiration for caching
-    const resultsWithSignedUrl = rows.map(row => {
-      const params = {
-        Bucket: process.env.R2_BUCKET_NAME,
-        Key: row.file_path,
-        Expires: 60 * 60, // 1 hour
-        ResponseContentType: 'image/gif',
-        ResponseCacheControl:
-          'public, max-age=86400, stale-while-revalidate=43200'
-      };
+    // Generate presigned URLs with longer expiration for caching
+    const resultsWithSignedUrl = await Promise.all(
+      rows.map(async row => {
+        const signedUrl = await getPresignedUrl(
+          process.env.R2_BUCKET_NAME,
+          row.file_path
+        );
 
-      const signedUrl = s3.getSignedUrl('getObject', params);
-
-      return {
-        id: row.id,
-        name: row.name,
-        muscle: row.muscle,
-        muscle_group: row.muscle_group,
-        subcategory: row.subcategory,
-        equipment: row.equipment,
-        imageUrl: signedUrl
-      };
-    });
+        return {
+          id: row.id,
+          name: row.name,
+          muscle: row.muscle,
+          muscle_group: row.muscle_group,
+          subcategory: row.subcategory,
+          equipment: row.equipment,
+          imageUrl: signedUrl
+        };
+      })
+    );
 
     // Set cache headers
     res.set({
@@ -165,7 +180,10 @@ router.get('/exercise-catalog/:id/image', async (req, res) => {
       ResponseCacheControl: 'public, max-age=86400, stale-while-revalidate=3600'
     };
 
-    const signedUrl = s3.getSignedUrl('getObject', params);
+    const signedUrl = await getPresignedUrl(
+      process.env.R2_BUCKET_NAME,
+      rows[0].file_path
+    );
     res.json({ imageUrl: signedUrl });
   } catch (error) {
     console.error('Error generating image URL:', error);

@@ -1,17 +1,30 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../config/db');
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
-const AWS = require('aws-sdk');
-
-const s3 = new AWS.S3({
-  accessKeyId: process.env.R2_ACCESS_KEY,
-  secretAccessKey: process.env.R2_SECRET_KEY,
-  endpoint: process.env.R2_URL,
+const s3Client = new S3Client({
   region: 'auto',
-  signatureVersion: 'v4',
-  s3ForcePathStyle: true
+  endpoint: process.env.R2_URL,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY,
+    secretAccessKey: process.env.R2_SECRET_KEY
+  },
+  forcePathStyle: true
 });
+
+// Add helper function for generating signed URLs
+const getPresignedUrl = async (bucket, key) => {
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ResponseContentType: 'image/gif',
+    ResponseCacheControl: 'public, max-age=86400'
+  });
+
+  return getSignedUrl(s3Client, command, { expiresIn: 3600 });
+};
 
 // Endpoint to get a workout by ID
 router.get('/workout/:workout_id', async (req, res) => {
@@ -97,26 +110,25 @@ router.get('/workout/:workout_id', async (req, res) => {
     });
 
     // Convert Map to array and sort exercises by order
-    workout.exercises = Array.from(exercisesMap.values())
-      .sort((a, b) => a.order - b.order)
-      .map(exercise => {
-        // Generate signed URL for each exercise image
-        const signedUrl = exercise.imageUrl
-          ? s3.getSignedUrl('getObject', {
-              Bucket: process.env.R2_BUCKET_NAME,
-              Key: exercise.imageUrl,
-              Expires: 60 * 60, // URL expires in 1 hour
-              ResponseContentType: 'image/gif',
-              ResponseCacheControl: 'public, max-age=86400'
-            })
-          : null;
+    workout.exercises = await Promise.all(
+      Array.from(exercisesMap.values())
+        .sort((a, b) => a.order - b.order)
+        .map(async exercise => {
+          // Generate signed URL for each exercise image using new method
+          const signedUrl = exercise.imageUrl
+            ? await getPresignedUrl(
+                process.env.R2_BUCKET_NAME,
+                exercise.imageUrl
+              )
+            : null;
 
-        return {
-          ...exercise,
-          sets: exercise.sets.sort((a, b) => a.order - b.order),
-          imageUrl: signedUrl // Replace file_path with signed URL
-        };
-      });
+          return {
+            ...exercise,
+            sets: exercise.sets.sort((a, b) => a.order - b.order),
+            imageUrl: signedUrl
+          };
+        })
+    );
 
     res.json(workout);
   } catch (error) {
