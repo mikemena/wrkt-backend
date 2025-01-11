@@ -16,7 +16,7 @@ const s3Client = new S3Client({
   forcePathStyle: true
 });
 
-// Add helper function for generating signed URLs
+// Add helper function for generating signed URL
 const getPresignedUrl = async (bucket, key) => {
   const command = new GetObjectCommand({
     Bucket: bucket,
