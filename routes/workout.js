@@ -20,7 +20,7 @@ const getPresignedUrl = async (bucket, key) => {
     Bucket: bucket,
     Key: key,
     ResponseContentType: 'image/gif',
-    ResponseCacheControl: 'public, max-age=86400'
+    ResponseCacheControl: 'public, max-age=86400, stale-while-revalidate=43200'
   });
 
   return getSignedUrl(s3Client, command, { expiresIn: 3600 });

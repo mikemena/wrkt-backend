@@ -22,15 +22,12 @@ const s3Client = new S3Client({
 const getPresignedUrl = async (bucket, key) => {
   const command = new GetObjectCommand({
     Bucket: bucket,
-    Key: key
-  });
-
-  return getSignedUrl(s3Client, command, {
-    expiresIn: 3600,
-
+    Key: key,
     ResponseContentType: 'image/gif',
     ResponseCacheControl: 'public, max-age=86400, stale-while-revalidate=43200'
   });
+
+  return getSignedUrl(s3Client, command, { expiresIn: 3600 });
 };
 
 // Endpoint to get all exercises in the catalog
@@ -219,15 +216,10 @@ router.get('/exercise-catalog/:id', async (req, res) => {
     }
 
     // Add signed URL
-    const params = {
-      Bucket: process.env.R2_BUCKET_NAME,
-      Key: rows[0].file_path,
-      Expires: 3600,
-      ResponseContentType: 'image/gif',
-      ResponseCacheControl: 'public, max-age=86400, stale-while-revalidate=3600'
-    };
-
-    const signedUrl = s3.getSignedUrl('getObject', params);
+    const signedUrl = await getPresignedUrl(
+      process.env.R2_BUCKET_NAME,
+      rows[0].file_path
+    );
 
     // Return cleaned up object without file_path
     const result = {
@@ -261,7 +253,23 @@ router.get('/exercise-catalog/muscles/:muscleId', async (req, res) => {
     WHERE ec.muscle_group_id = $1;
     `;
     const { rows } = await db.query(query, [muscleId]);
-    res.json(rows);
+
+    // Generate signed URLs for all results
+    const resultsWithSignedUrls = await Promise.all(
+      rows.map(async row => {
+        const signedUrl = await getPresignedUrl(
+          process.env.R2_BUCKET_NAME,
+          row.file_path
+        );
+
+        const { file_path, ...rest } = row;
+        return {
+          ...rest,
+          imageUrl: signedUrl
+        };
+      })
+    );
+    res.json(resultsWithSignedUrls);
   } catch (error) {
     console.error('Error fetching exercises by muscle:', error);
     res.status(500).send('Internal Server Error');
@@ -282,9 +290,26 @@ router.get('/exercise-catalog/equipments/:equipmentId', async (req, res) => {
     WHERE ec.equipment_id = $1;
     `;
     const { rows } = await db.query(query, [equipmentId]);
-    res.json(rows);
+
+    // Generate signed URLs for all results
+    const resultsWithSignedUrls = await Promise.all(
+      rows.map(async row => {
+        const signedUrl = await getPresignedUrl(
+          process.env.R2_BUCKET_NAME,
+          row.file_path
+        );
+
+        const { file_path, ...rest } = row;
+        return {
+          ...rest,
+          imageUrl: signedUrl
+        };
+      })
+    );
+
+    res.json(resultsWithSignedUrls);
   } catch (error) {
-    console.error('Error fetching equipment by muscle:', error);
+    console.error('Error fetching exercises by equipment:', error);
     res.status(500).send('Internal Server Error');
   }
 });

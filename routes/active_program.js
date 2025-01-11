@@ -2,17 +2,31 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../config/db');
 
-const AWS = require('aws-sdk');
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 require('dotenv').config();
 
-const s3 = new AWS.S3({
-  accessKeyId: process.env.R2_ACCESS_KEY,
-  secretAccessKey: process.env.R2_SECRET_KEY,
-  endpoint: process.env.R2_URL,
+const s3Client = new S3Client({
   region: 'auto',
-  signatureVersion: 'v4',
-  s3ForcePathStyle: true
+  endpoint: process.env.R2_URL,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY,
+    secretAccessKey: process.env.R2_SECRET_KEY
+  },
+  forcePathStyle: true
 });
+
+// Add helper function for generating signed URLs
+const getPresignedUrl = async (bucket, key) => {
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ResponseContentType: 'image/gif',
+    ResponseCacheControl: 'public, max-age=86400, stale-while-revalidate=43200'
+  });
+
+  return getSignedUrl(s3Client, command, { expiresIn: 3600 });
+};
 
 // Get active program for a user
 router.get('/active-program/user/:userId', async (req, res) => {
@@ -69,16 +83,11 @@ router.get('/active-program/user/:userId', async (req, res) => {
         );
 
         // Generate signed URL for the exercise image
-        const params = {
-          Bucket: process.env.R2_BUCKET_NAME,
-          Key: exercise.file_path,
-          Expires: 3600, // 1 hour expiration
-          ResponseContentType: 'image/gif',
-          ResponseCacheControl:
-            'public, max-age=86400, stale-while-revalidate=3600'
-        };
-
-        const imageUrl = s3.getSignedUrl('getObject', params);
+        // Use the getPresignedUrl helper function instead of the old s3.getSignedUrl
+        const imageUrl = await getPresignedUrl(
+          process.env.R2_BUCKET_NAME,
+          exercise.file_path
+        );
 
         // Add the exercise to the workout with the signed URL
         workout.exercises.push({
