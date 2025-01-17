@@ -116,6 +116,7 @@ const userExercisesRoutes = require('./routes/exercises');
 const workoutHistoryRoutes = require('./routes/workout_history');
 const activeProgramRoutes = require('./routes/active_program');
 const progressRoutes = require('./routes/progress');
+const healthRoutes = require('./routes/health');
 
 // Use your routes with a base path
 app.use('/api', imageRoutes);
@@ -131,6 +132,7 @@ app.use('/api', workoutHistoryRoutes);
 app.use('/api', programRoutes);
 app.use('/api', activeProgramRoutes);
 app.use('/api', progressRoutes);
+app.use('/api', healthRoutes);
 
 const PORT = process.env.PORT || 9025;
 app.listen(PORT, () => {
