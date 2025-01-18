@@ -15,21 +15,41 @@ if (process.env.NODE_ENV !== 'production') {
 app.use(express.json());
 
 // Security middleware
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        imgSrc: ["'self'", 'data:', 'https:', '*.r2.cloudflarestorage.com'],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'"],
-        connectSrc: ["'self'", '*.r2.cloudflarestorage.com']
-      }
-    },
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-    crossOriginEmbedderPolicy: false
-  })
-);
+// Security middleware with environment-specific settings
+if (process.env.NODE_ENV === 'production') {
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          imgSrc: ["'self'", 'data:', 'https:', '*.r2.cloudflarestorage.com'],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'"],
+          connectSrc: ["'self'", '*.r2.cloudflarestorage.com']
+        }
+      },
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      crossOriginEmbedderPolicy: false
+    })
+  );
+} else {
+  // Development: More permissive CSP
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'", '*'],
+          imgSrc: ["'self'", 'data:', 'https:', '*'],
+          styleSrc: ["'self'", "'unsafe-inline'", '*'],
+          scriptSrc: ["'self'", '*'],
+          connectSrc: ["'self'", '*']
+        }
+      },
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      crossOriginEmbedderPolicy: false
+    })
+  );
+}
 
 // Serve static files from the images directory
 app.use('/images', express.static(path.join(__dirname, 'images')));
@@ -64,24 +84,6 @@ const limiter = rateLimit({
 });
 
 app.use(limiter);
-
-// Add security headers in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(
-    helmet({
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          imgSrc: ["'self'", 'data:', 'https:'],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          scriptSrc: ["'self'"]
-        }
-      },
-      crossOriginResourcePolicy: { policy: 'cross-origin' },
-      crossOriginEmbedderPolicy: false
-    })
-  );
-}
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -136,9 +138,5 @@ app.use('/api', healthRoutes);
 
 const PORT = process.env.PORT || 9025;
 app.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-  if (process.env.NODE_ENV === 'production') {
-    console.log('Production URLs:');
-    console.log('- API URL: https://api.wrkt.fitness');
-  }
+  console.log(`Server running on http://localhost:${PORT}`);
 });
