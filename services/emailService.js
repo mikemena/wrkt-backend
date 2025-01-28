@@ -55,7 +55,6 @@ const sendPasswordResetEmail = async (email, resetToken) => {
       `
     });
 
-    console.log('Email sent:', response);
     return response;
   } catch (error) {
     console.error('Error sending email:', error);

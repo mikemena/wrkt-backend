@@ -97,12 +97,12 @@ app.use((err, req, res, next) => {
 });
 
 // Logging based on environment
-if (process.env.NODE_ENV !== 'production') {
-  app.use((req, res, next) => {
-    console.log(`${req.method} ${req.path}`);
-    next();
-  });
-}
+// if (process.env.NODE_ENV !== 'production') {
+//   app.use((req, res, next) => {
+//     console.log(`${req.method} ${req.path}`);
+//     next();
+//   });
+// }
 
 // Import routes
 const imageRoutes = require('./routes/images');

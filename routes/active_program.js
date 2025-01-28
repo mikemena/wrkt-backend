@@ -109,7 +109,7 @@ router.get('/active-program/user/:userId', async (req, res) => {
         .digest('hex')
     });
 
-    res.json({ activeProgram });
+    res.json(activeProgram);
   } catch (error) {
     console.error(
       'Backend active_programs.js Error fetching active program:',
