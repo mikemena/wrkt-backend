@@ -5,9 +5,11 @@ const cors = require('cors');
 const app = express();
 const path = require('path');
 
+// Set trust proxy for all environments
+app.set('trust proxy', 1);
+
 // Load .env only in development
 if (process.env.NODE_ENV !== 'production') {
-  app.set('trust proxy', 1);
   require('dotenv').config();
 }
 
