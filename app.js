@@ -65,7 +65,11 @@ const corsOptions = {
           'exp://localhost:19000',
           'your-app-scheme://',
           /\.expo\.dev$/,
-          /\.wrkt\.fitness$/
+          /\.wrkt\.fitness$/,
+          'https://wrkt-backend-development.up.railway.app',
+          'exp://*',
+          'https://*.expo.io',
+          'https://*.expo.dev'
         ]
       : '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
