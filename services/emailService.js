@@ -62,6 +62,67 @@ const sendPasswordResetEmail = async (email, resetToken) => {
   }
 };
 
+// Verify Email
+
+const sendVerificationEmail = async (email, verificationToken) => {
+  const verifyUrl = `wrkt://verify-email?token=${verificationToken}`;
+  const webUrl = `http://localhost:8081/verify-email?token=${verificationToken}`;
+
+  const mg = mailgun.client({
+    username: 'api',
+    key: process.env.MAILGUN_API_KEY,
+    domain: process.env.MAILGUN_DOMAIN
+  });
+
+  try {
+    const response = await mg.messages.create(process.env.MAILGUN_DOMAIN, {
+      from: `WRKT App <mailgun@${process.env.MAILGUN_DOMAIN}>`,
+      to: [email],
+      subject: 'Verify Your Email - WRKT',
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px;">
+          <h2>Verify Your Email</h2>
+          <p>Thanks for signing up! Please verify your email to get full access to all features.</p>
+
+          <!-- Mobile App Link -->
+          <p style="margin: 20px 0;">
+            <a href="${verifyUrl}" style="
+              background-color: #D93B56;
+              color: white;
+              padding: 12px 24px;
+              text-decoration: none;
+              border-radius: 25px;
+              display: inline-block;
+            ">Verify Email in App</a>
+          </p>
+
+          <!-- Testing Instructions -->
+          <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+            <p><strong>Testing in Simulator?</strong></p>
+            <p>Copy and run this command in your terminal:</p>
+            <code style="background: #e9ecef; padding: 8px; display: block; margin: 10px 0;">
+              xcrun simctl openurl booted "${verifyUrl}"
+            </code>
+
+            <p><strong>Testing in Web Browser?</strong></p>
+            <p>Click this link:</p>
+            <a href="${webUrl}" style="color: #D93B56;">Open in Browser</a>
+          </div>
+
+          <p>If you didn't create an account, you can safely ignore this email.</p>
+          <p>This verification link will expire in 24 hours.</p>
+        </div>
+      `
+    });
+
+    return response;
+  } catch (error) {
+    console.error('Error sending verification email:', error);
+    throw new Error('Failed to send verification email');
+  }
+};
+
 module.exports = {
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  sendVerificationEmail
 };
