@@ -5,9 +5,11 @@ const cors = require('cors');
 const app = express();
 const path = require('path');
 
+// Set trust proxy for all environments
+app.set('trust proxy', 1);
+
 // Load .env only in development
 if (process.env.NODE_ENV !== 'production') {
-  app.set('trust proxy', 1);
   require('dotenv').config();
 }
 
@@ -65,7 +67,11 @@ const corsOptions = {
           'exp://localhost:19000',
           'your-app-scheme://',
           /\.expo\.dev$/,
-          /\.wrkt\.fitness$/
+          /\.wrkt\.fitness$/,
+          'https://wrkt-backend-development.up.railway.app',
+          'exp://*',
+          'https://*.expo.io',
+          'https://*.expo.dev'
         ]
       : '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],

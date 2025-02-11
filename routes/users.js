@@ -30,29 +30,136 @@ router.post('/auth/signup', async (req, res) => {
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
+    // Generate verification token
+    const verificationToken = jwt.sign(
+      { email, purpose: 'email-verification' },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
     // Insert new user
     const result = await pool.query(
-      'INSERT INTO users (auth_provider, email, password_hash, signup_date) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING id, auth_provider,email, signup_date',
-      [auth_provider, email, passwordHash]
+      'INSERT INTO users (auth_provider, email, password_hash, signup_date,verification_token,verification_token_expires,access_level) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4, NOW() + INTERVAL "24 hours",LIMITED) RETURNING id, auth_provider,email, signup_date',
+      [auth_provider, email, passwordHash, verificationToken]
     );
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: result.rows[0].id },
+      { userId: result.rows[0].id, accessLevel: 'LIMITED' },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
+
+    // Send verification email
+    await sendVerificationEmail(email, verificationToken);
 
     res.json({
       token,
       user: {
         id: result.rows[0].id,
-        email: result.rows[0].email
+        email: result.rows[0].email,
+        accessLevel: 'LIMITED'
       }
     });
   } catch (error) {
     console.error('Signup error:', error);
     res.status(500).json({ message: 'Server error during signup' });
+  }
+});
+
+// Endpoint for email verification
+
+router.post('/auth/verify-email', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (decoded.purpose !== 'email-verification') {
+      return res.status(400).json({ message: 'Invalid verification token' });
+    }
+
+    // Update user verification status
+    const result = await pool.query(
+      `UPDATE users
+       SET email_verified = TRUE,
+           verification_token = NULL,
+           verification_token_expires = NULL,
+           access_level = 'FULL'
+       WHERE email = $1 AND verification_token = $2
+       RETURNING id, email`,
+      [decoded.email, token]
+    );
+
+    if (result.rows.length === 0) {
+      return res
+        .status(400)
+        .json({ message: 'Invalid or expired verification token' });
+    }
+
+    // Generate new full access token
+    const newToken = jwt.sign(
+      {
+        userId: result.rows[0].id,
+        accessLevel: 'FULL'
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      token: newToken,
+      user: {
+        id: result.rows[0].id,
+        email: result.rows[0].email,
+        accessLevel: 'FULL'
+      }
+    });
+  } catch (error) {
+    console.error('Email verification error:', error);
+    res.status(500).json({ message: 'Server error during email verification' });
+  }
+});
+
+// Endpoint to resend verification email
+
+router.post('/auth/resend-verification', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Generate new verification token
+    const verificationToken = jwt.sign(
+      { email, purpose: 'email-verification' },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    // Update user with new verification token
+    const result = await pool.query(
+      `UPDATE users
+       SET verification_token = $1,
+           verification_token_expires = NOW() + INTERVAL '24 hours'
+       WHERE email = $2 AND email_verified = FALSE
+       RETURNING id`,
+      [verificationToken, email]
+    );
+
+    if (result.rows.length === 0) {
+      return res
+        .status(400)
+        .json({ message: 'Invalid email or already verified' });
+    }
+
+    // Send new verification email
+    await sendVerificationEmail(email, verificationToken);
+
+    res.json({ message: 'Verification email resent successfully' });
+  } catch (error) {
+    console.error('Resend verification error:', error);
+    res
+      .status(500)
+      .json({ message: 'Server error during resend verification' });
   }
 });
 
