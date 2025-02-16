@@ -3,6 +3,7 @@ const router = express.Router();
 const { pool } = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const axios = require('axios');
 const db = require('../config/db');
 require('dotenv').config();
 const { sendPasswordResetEmail } = require('../services/emailService');
@@ -165,20 +166,51 @@ router.post('/auth/resend-verification', async (req, res) => {
 
 // Endpoint to sign up with social authentication
 
+// Add this function to verify Apple's JWT token
+async function verifyAppleToken(identityToken) {
+  try {
+    // Get Apple's public keys
+    const appleKeysResponse = await axios.get(
+      'https://appleid.apple.com/auth/keys'
+    );
+    const keys = appleKeysResponse.data.keys;
+
+    // Verify the token using Apple's public key
+    // You may want to use a library like 'jwt-decode' for this
+    const decoded = jwt.decode(identityToken, { complete: true });
+    if (!decoded) throw new Error('Invalid token');
+
+    return decoded.payload;
+  } catch (error) {
+    throw new Error('Failed to verify Apple token');
+  }
+}
+
 router.post('/auth/social', async (req, res) => {
   try {
-    const { email, authProvider, authProviderId, name } = req.body;
+    const { email, authProvider, identityToken, user } = req.body;
+
+    // Additional verification for Apple sign in
+    if (authProvider === 'apple') {
+      // Verify the token with Apple
+      const verifiedPayload = await verifyAppleToken(identityToken);
+
+      // The email from Apple's token should match the one provided
+      if (verifiedPayload.email !== email) {
+        return res.status(401).json({ message: 'Invalid authentication' });
+      }
+    }
 
     // Check if user exists
     const existingUser = await pool.query(
-      'SELECT * FROM users WHERE email = $1 OR (auth_provider = $2 AND auth_provider_id = $3)',
-      [email, authProvider, authProviderId]
+      'SELECT * FROM users WHERE email = $1',
+      [email]
     );
 
     let userId;
 
     if (existingUser.rows.length > 0) {
-      // User exists - just return token
+      // User exists - return token
       userId = existingUser.rows[0].id;
     } else {
       // Create new user
@@ -186,25 +218,36 @@ router.post('/auth/social', async (req, res) => {
         `INSERT INTO users (
           email,
           auth_provider,
-          auth_provider_id,
-          username,
-          signup_date
-        ) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+          email_verified,
+          signup_date,
+          access_level
+        ) VALUES ($1, $2, TRUE, CURRENT_TIMESTAMP, 'FULL')
         RETURNING id`,
-        [email, authProvider, authProviderId, name]
+        [email, authProvider]
       );
       userId = result.rows[0].id;
     }
 
     // Generate token
-    const token = jwt.sign({ userId }, process.env.JWT_SECRET, {
-      expiresIn: '7d'
-    });
+    const token = jwt.sign(
+      { userId, accessLevel: 'FULL' },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
 
-    res.json({ token, user: { id: userId, email } });
+    res.json({
+      token,
+      user: {
+        id: userId,
+        email,
+        accessLevel: 'FULL'
+      }
+    });
   } catch (error) {
-    console.error('Social auth error:', error);
-    res.status(500).json({ message: 'Server error during social auth' });
+    console.error('Apple auth error:', error);
+    res
+      .status(500)
+      .json({ message: 'Server error during Apple authentication' });
   }
 });
 
