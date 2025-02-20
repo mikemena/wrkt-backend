@@ -1,20 +1,20 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const db = require('../config/db');
-const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
-const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
-require('dotenv').config();
+const db = require("../config/db");
+const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+require("dotenv").config();
 
 // Set up AWS S3 to interact with Cloudflare R2
 
 const s3Client = new S3Client({
-  region: 'auto',
+  region: "auto",
   endpoint: process.env.R2_URL,
   credentials: {
     accessKeyId: process.env.R2_ACCESS_KEY,
-    secretAccessKey: process.env.R2_SECRET_KEY
+    secretAccessKey: process.env.R2_SECRET_KEY,
   },
-  forcePathStyle: true
+  forcePathStyle: true,
 });
 
 // Helper function for generating signed URLs
@@ -23,8 +23,8 @@ const getPresignedUrl = async (bucket, key) => {
   const command = new GetObjectCommand({
     Bucket: bucket,
     Key: key,
-    ResponseContentType: 'image/gif',
-    ResponseCacheControl: 'public, max-age=86400, stale-while-revalidate=43200'
+    ResponseContentType: "image/gif",
+    ResponseCacheControl: "public, max-age=86400, stale-while-revalidate=43200",
   });
 
   return getSignedUrl(s3Client, command, { expiresIn: 3600 });
@@ -32,14 +32,14 @@ const getPresignedUrl = async (bucket, key) => {
 
 // Endpoint to get all exercises in the catalog
 
-router.get('/exercise-catalog', async (req, res) => {
+router.get("/exercise-catalog", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const offset = (page - 1) * limit;
     const name = req.query.name;
-    const muscle = req.query.muscle;
-    const equipment = req.query.equipment;
+    const muscles = req.query["muscles[]"] || req.query.muscles;
+    const equipment = req.query["equipment[]"] || req.query.equipment;
 
     // Build WHERE clause dynamically
     let whereConditions = [];
@@ -52,23 +52,44 @@ router.get('/exercise-catalog', async (req, res) => {
       paramIndex++;
     }
 
-    if (muscle) {
-      // Make sure we're exactly matching the muscle name
-      whereConditions.push(`LOWER(mg.muscle) = LOWER($${paramIndex})`);
-      queryParams.push(muscle);
-      paramIndex++;
+    if (muscles) {
+      // Handle array of muscles
+      if (Array.isArray(muscles)) {
+        const muscleParams = muscles
+          .map((_, idx) => `$${paramIndex + idx}`)
+          .join(",");
+        whereConditions.push(`LOWER(mg.muscle) IN (${muscleParams})`);
+        queryParams.push(...muscles.map((m) => m.toLowerCase()));
+        paramIndex += muscles.length;
+      } else {
+        // Handle single muscle
+        whereConditions.push(`LOWER(mg.muscle) = LOWER($${paramIndex})`);
+        queryParams.push(muscles);
+        paramIndex++;
+      }
     }
 
     if (equipment) {
-      whereConditions.push(`LOWER(eq.name) = LOWER($${paramIndex})`);
-      queryParams.push(equipment);
-      paramIndex++;
+      // Handle array of equipment
+      if (Array.isArray(equipment)) {
+        const equipmentParams = equipment
+          .map((_, idx) => `$${paramIndex + idx}`)
+          .join(",");
+        whereConditions.push(`LOWER(eq.name) IN (${equipmentParams})`);
+        queryParams.push(...equipment.map((e) => e.toLowerCase()));
+        paramIndex += equipment.length;
+      } else {
+        // Handle single equipment
+        whereConditions.push(`LOWER(eq.name) = LOWER($${paramIndex})`);
+        queryParams.push(equipment);
+        paramIndex++;
+      }
     }
 
     const whereClause =
       whereConditions.length > 0
-        ? 'WHERE ' + whereConditions.join(' AND ')
-        : '';
+        ? "WHERE " + whereConditions.join(" AND ")
+        : "";
 
     // Get filtered count
     const countQuery = `
@@ -79,7 +100,7 @@ router.get('/exercise-catalog', async (req, res) => {
     ${whereClause}`;
 
     const {
-      rows: [{ count }]
+      rows: [{ count }],
     } = await db.query(countQuery, queryParams);
 
     // Main query with filters
@@ -105,10 +126,10 @@ router.get('/exercise-catalog', async (req, res) => {
     // Generate presigned URLs with longer expiration for caching
     // Generate presigned URLs with longer expiration for caching
     const resultsWithSignedUrl = await Promise.all(
-      rows.map(async row => {
+      rows.map(async (row) => {
         const signedUrl = await getPresignedUrl(
           process.env.R2_BUCKET_NAME,
-          row.file_path
+          row.file_path,
         );
 
         return {
@@ -118,19 +139,19 @@ router.get('/exercise-catalog', async (req, res) => {
           muscle_group: row.muscle_group,
           subcategory: row.subcategory,
           equipment: row.equipment,
-          imageUrl: signedUrl
+          imageUrl: signedUrl,
         };
-      })
+      }),
     );
 
     // Set cache headers
     res.set({
-      'Cache-Control':
-        'public, max-age=86400, stale-while-revalidate=3600, stale-if-error=86400',
-      ETag: require('crypto')
-        .createHash('md5')
+      "Cache-Control":
+        "public, max-age=86400, stale-while-revalidate=3600, stale-if-error=86400",
+      ETag: require("crypto")
+        .createHash("md5")
         .update(JSON.stringify(resultsWithSignedUrl))
-        .digest('hex')
+        .digest("hex"),
     });
 
     // Return paginated results with metadata
@@ -140,17 +161,17 @@ router.get('/exercise-catalog', async (req, res) => {
         total: parseInt(count),
         currentPage: page,
         totalPages: Math.ceil(count / limit),
-        hasMore: offset + rows.length < count
-      }
+        hasMore: offset + rows.length < count,
+      },
     });
   } catch (error) {
-    console.error('Error loading exercises:', error);
+    console.error("Error loading exercises:", error);
     res.status(500).send(error.message);
   }
 });
 
 // Get image URL for an exercise by ID
-router.get('/exercise-catalog/:id/image', async (req, res) => {
+router.get("/exercise-catalog/:id/image", async (req, res) => {
   try {
     const { id } = req.params;
     const query = `
@@ -162,31 +183,32 @@ router.get('/exercise-catalog/:id/image', async (req, res) => {
 
     const { rows } = await db.query(query, [id]);
     if (rows.length === 0) {
-      return res.status(404).json({ message: 'Image not found' });
+      return res.status(404).json({ message: "Image not found" });
     }
 
     const params = {
       Bucket: process.env.R2_BUCKET_NAME,
       Key: rows[0].file_path,
       Expires: 3600, // 1 hour
-      ResponseContentType: 'image/gif',
-      ResponseCacheControl: 'public, max-age=86400, stale-while-revalidate=3600'
+      ResponseContentType: "image/gif",
+      ResponseCacheControl:
+        "public, max-age=86400, stale-while-revalidate=3600",
     };
 
     const signedUrl = await getPresignedUrl(
       process.env.R2_BUCKET_NAME,
-      rows[0].file_path
+      rows[0].file_path,
     );
     res.json({ imageUrl: signedUrl });
   } catch (error) {
-    console.error('Error generating image URL:', error);
-    res.status(500).json({ message: 'Error generating image URL' });
+    console.error("Error generating image URL:", error);
+    res.status(500).json({ message: "Error generating image URL" });
   }
 });
 
 // Endpoint to get a specific exercise from the catalog by ID
 
-router.get('/exercise-catalog/:id', async (req, res) => {
+router.get("/exercise-catalog/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -208,13 +230,13 @@ router.get('/exercise-catalog/:id', async (req, res) => {
     const { rows } = await db.query(exerciseQuery, [parseInt(id)]);
 
     if (rows.length === 0) {
-      return res.status(404).json({ message: 'Exercise not found' });
+      return res.status(404).json({ message: "Exercise not found" });
     }
 
     // Add signed URL
     const signedUrl = await getPresignedUrl(
       process.env.R2_BUCKET_NAME,
-      rows[0].file_path
+      rows[0].file_path,
     );
 
     // Return cleaned up object without file_path
@@ -225,19 +247,19 @@ router.get('/exercise-catalog/:id', async (req, res) => {
       muscle_group: rows[0].muscle_group,
       subcategory: rows[0].subcategory,
       equipment: rows[0].equipment,
-      imageUrl: signedUrl
+      imageUrl: signedUrl,
     };
 
     res.json(result);
   } catch (error) {
-    console.error('Error fetching exercise:', error);
-    res.status(500).json({ message: 'Error fetching exercise' });
+    console.error("Error fetching exercise:", error);
+    res.status(500).json({ message: "Error fetching exercise" });
   }
 });
 
 // Endpoint to get exercises by specific muscle id
 
-router.get('/exercise-catalog/muscles/:muscleId', async (req, res) => {
+router.get("/exercise-catalog/muscles/:muscleId", async (req, res) => {
   try {
     const { muscleId } = req.params;
     const query = `
@@ -252,29 +274,29 @@ router.get('/exercise-catalog/muscles/:muscleId', async (req, res) => {
 
     // Generate signed URLs for all results
     const resultsWithSignedUrls = await Promise.all(
-      rows.map(async row => {
+      rows.map(async (row) => {
         const signedUrl = await getPresignedUrl(
           process.env.R2_BUCKET_NAME,
-          row.file_path
+          row.file_path,
         );
 
         const { file_path, ...rest } = row;
         return {
           ...rest,
-          imageUrl: signedUrl
+          imageUrl: signedUrl,
         };
-      })
+      }),
     );
     res.json(resultsWithSignedUrls);
   } catch (error) {
-    console.error('Error fetching exercises by muscle:', error);
-    res.status(500).send('Internal Server Error');
+    console.error("Error fetching exercises by muscle:", error);
+    res.status(500).send("Internal Server Error");
   }
 });
 
 // Endpoint to get exercises by specific equipment id
 
-router.get('/exercise-catalog/equipments/:equipmentId', async (req, res) => {
+router.get("/exercise-catalog/equipments/:equipmentId", async (req, res) => {
   try {
     const { equipmentId } = req.params;
     const query = `
@@ -289,38 +311,38 @@ router.get('/exercise-catalog/equipments/:equipmentId', async (req, res) => {
 
     // Generate signed URLs for all results
     const resultsWithSignedUrls = await Promise.all(
-      rows.map(async row => {
+      rows.map(async (row) => {
         const signedUrl = await getPresignedUrl(
           process.env.R2_BUCKET_NAME,
-          row.file_path
+          row.file_path,
         );
 
         const { file_path, ...rest } = row;
         return {
           ...rest,
-          imageUrl: signedUrl
+          imageUrl: signedUrl,
         };
-      })
+      }),
     );
 
     res.json(resultsWithSignedUrls);
   } catch (error) {
-    console.error('Error fetching exercises by equipment:', error);
-    res.status(500).send('Internal Server Error');
+    console.error("Error fetching exercises by equipment:", error);
+    res.status(500).send("Internal Server Error");
   }
 });
 
 // Endpoint to create an exercise
 
-router.post('/exercise-catalog', async (req, res) => {
+router.post("/exercise-catalog", async (req, res) => {
   try {
     const { name } = req.body;
     const { muscle_id } = req.body;
     const { equipment_id } = req.body;
     const { image_id } = req.body;
     const { rows } = await db.query(
-      'INSERT INTO exercise_catalog (name, muscle_group_id, equipment_id, image_id) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name, muscle_id, equipment_id, image_id]
+      "INSERT INTO exercise_catalog (name, muscle_group_id, equipment_id, image_id) VALUES ($1, $2, $3, $4) RETURNING *",
+      [name, muscle_id, equipment_id, image_id],
     );
     res.status(201).json(rows[0]);
   } catch (error) {
@@ -330,7 +352,7 @@ router.post('/exercise-catalog', async (req, res) => {
 
 // Endpoint to update an exercise
 
-router.put('/exercise-catalog/:id', async (req, res) => {
+router.put("/exercise-catalog/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { name, muscle_group_id, equipment_id, image_id } = req.body;
@@ -363,17 +385,17 @@ router.put('/exercise-catalog/:id', async (req, res) => {
     queryValues.push(id); // For the WHERE condition
 
     if (updateParts.length === 0) {
-      return res.status(400).send('No update fields provided.');
+      return res.status(400).send("No update fields provided.");
     }
 
     const queryString = `UPDATE exercise_catalog SET ${updateParts.join(
-      ', '
+      ", ",
     )} WHERE id = $${queryIndex} RETURNING *`;
 
     const { rows } = await db.query(queryString, queryValues);
 
     if (rows.length === 0) {
-      return res.status(404).send('Exercise not found.');
+      return res.status(404).send("Exercise not found.");
     }
 
     res.status(200).json(rows[0]);
@@ -384,25 +406,25 @@ router.put('/exercise-catalog/:id', async (req, res) => {
 
 // Delete exercise
 
-router.delete('/exercise-catalog/:id', async (req, res) => {
+router.delete("/exercise-catalog/:id", async (req, res) => {
   const { id } = req.params; // Extract the ID from the route parameters
 
   try {
     const { rowCount } = await db.query(
-      'DELETE FROM exercise_catalog WHERE id = $1',
-      [id]
+      "DELETE FROM exercise_catalog WHERE id = $1",
+      [id],
     );
 
     if (rowCount > 0) {
-      res.status(200).json({ message: 'Exercise deleted successfully' });
+      res.status(200).json({ message: "Exercise deleted successfully" });
     } else {
       // If no muscle was found and deleted, return a 404 Not Found response
-      res.status(404).json({ message: 'Exercise not found' });
+      res.status(404).json({ message: "Exercise not found" });
     }
   } catch (error) {
     // Log the error and return a 500 Internal Server Error response if an error occurs
-    console.error('Error deleting exercise:', error);
-    res.status(500).json({ message: 'Error deleting exercise' });
+    console.error("Error deleting exercise:", error);
+    res.status(500).json({ message: "Error deleting exercise" });
   }
 });
 
