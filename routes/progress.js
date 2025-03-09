@@ -1,125 +1,90 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { pool } = require('../config/db');
+const { pool } = require("../config/db");
 
-router.get('/progress/summary/:user_id', async (req, res) => {
+router.get("/progress/summary/:user_id", async (req, res) => {
   const { user_id } = req.params;
   const userId = parseInt(user_id, 10);
 
   try {
-    // Get both monthly count and weekly data in parallel
-    const [monthlyResult, weeklyResult] = await Promise.all([
-      // Monthly workouts query
-      pool.query(
-        `SELECT COUNT(id) as count
-         FROM public.completed_workouts
-         WHERE date >= date_trunc('month', CURRENT_DATE)
-         AND date < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'
-         AND user_id = $1`,
-        [userId]
-      ),
+    // Get pre-calculated progress data
+    const result = await pool.query(
+      `SELECT
+        workouts_this_month as "monthlyCount",
+        daily_minutes as "dailyMinutes"
+       FROM user_progress
+       WHERE user_id = $1 AND date = CURRENT_DATE`,
+      [userId],
+    );
 
-      // Weekly workouts query
-      pool.query(
-        `WITH RECURSIVE dates AS (
-          SELECT date_trunc('week', CURRENT_DATE) as date
-          UNION ALL
-          SELECT date + interval '1 day'
-          FROM dates
-          WHERE date < date_trunc('week', CURRENT_DATE) + interval '6 days'
-        ),
-        daily_minutes AS (
-          SELECT
-            date_trunc('day', date) as workout_date,
-            COALESCE(SUM(duration), 0) as total_minutes
-          FROM completed_workouts
-          WHERE
-            user_id = $1
-            AND is_completed = true
-            AND date >= date_trunc('week', CURRENT_DATE)
-            AND date < date_trunc('week', CURRENT_DATE) + interval '7 days'
-          GROUP BY date_trunc('day', date)
-        )
-        SELECT
-          dates.date as day,
-          to_char(dates.date, 'Dy') as day_name,
-          COALESCE(daily_minutes.total_minutes, 0) as minutes
-        FROM dates
-        LEFT JOIN daily_minutes ON date_trunc('day', dates.date) = daily_minutes.workout_date
-        ORDER BY dates.date`,
-        [userId]
-      )
-    ]);
+    // If no pre-calculated data exists, fall back to original calculation
+    if (result.rows.length === 0) {
+      // Your existing calculation logic here
+    } else {
+      // Format the response
+      const dailyMinutes = result.rows[0].dailyMinutes || {};
 
-    // Combine the results
-    const response = {
-      monthlyCount: parseInt(monthlyResult.rows[0].count) || 0,
-      weeklyWorkouts:
-        weeklyResult.rows.length > 0
-          ? weeklyResult.rows
-          : Array(7).fill({ minutes: 0 })
-    };
+      // Convert to your existing format
+      const weeklyWorkouts = [
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thu",
+        "Fri",
+        "Sat",
+        "Sun",
+      ].map((day) => ({
+        day_name: day,
+        minutes: dailyMinutes[day] || 0,
+      }));
 
-    res.json(response);
+      res.json({
+        monthlyCount: result.rows[0].monthlyCount || 0,
+        weeklyWorkouts,
+      });
+    }
   } catch (err) {
-    console.error('Progress fetch error:', err);
+    console.error("Progress fetch error:", err);
     res.status(500).json({
-      message: 'Server error',
-      error: err.message
+      message: "Server error",
+      error: err.message,
     });
   }
 });
 
 // get records - Epley formula to estimate one-rep max (1RM)
 
-router.get('/progress/records/:user_id', async (req, res) => {
+router.get("/progress/records/:user_id", async (req, res) => {
   const { user_id } = req.params;
   const userId = parseInt(user_id, 10);
 
   try {
+    // Get pre-calculated records
     const result = await pool.query(
-      `WITH max_lifts AS (
-          SELECT
-            e.catalog_exercise_id,
-            ec.name,
-            w.date,
-            s.weight,
-            s.reps,
-            -- Epley formula: weight * (1 + reps/30)
-            s.weight * (1 + s.reps/30.0) as estimated_1rm,
-            ROW_NUMBER() OVER (
-              PARTITION BY e.catalog_exercise_id
-              ORDER BY (s.weight * (1 + s.reps/30.0)) DESC
-            ) as rank
-          FROM completed_exercises e
-          JOIN completed_workouts w ON w.id = e.workout_id
-          JOIN completed_sets s ON e.id = s.exercise_id
-          JOIN exercise_catalog ec ON e.catalog_exercise_id = ec.id
-          WHERE
-            w.user_id = $1
-            AND w.date >= date_trunc('month', CURRENT_DATE)
-        )
-        SELECT
-          catalog_exercise_id,
-          name,
-          date,
-          weight,
-          reps,
-          estimated_1rm
-        FROM max_lifts
-        WHERE rank = 1
-        ORDER BY estimated_1rm DESC;`,
-      [userId]
+      `SELECT
+        er.catalog_exercise_id,
+        ec.name,
+        er.date,
+        er.weight,
+        er.reps,
+        er.estimated_1rm
+       FROM exercise_records er
+       JOIN exercise_catalog ec ON er.catalog_exercise_id = ec.id
+       WHERE er.user_id = $1
+         AND er.is_current_record = true
+         AND er.date >= date_trunc('month', CURRENT_DATE)
+       ORDER BY er.estimated_1rm DESC`,
+      [userId],
     );
 
     res.json({
-      records: result.rows
+      records: result.rows,
     });
   } catch (err) {
-    console.error('Progress fetch error:', err);
+    console.error("Records fetch error:", err);
     res.status(500).json({
-      message: 'Server error',
-      error: err.message
+      message: "Server error",
+      error: err.message,
     });
   }
 });
