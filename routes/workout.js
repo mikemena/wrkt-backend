@@ -226,7 +226,6 @@ router.post("/workout/complete", async (req, res) => {
       }
     }
 
-    // MOVED OUTSIDE THE LOOP: Update user progress metrics
     await client.query(
       `INSERT INTO user_progress (user_id, date, workouts_this_month, workouts_this_week, last_updated)
        VALUES ($1, CURRENT_DATE,
@@ -338,7 +337,6 @@ router.post("/workout/complete", async (req, res) => {
   }
 });
 
-// test endpoint to verify the route is mounted correctly
 router.get("/workout/test", (req, res) => {
   res.json({ message: "Workout route is working" });
 });
