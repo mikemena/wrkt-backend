@@ -166,12 +166,14 @@ router.get("/workout/:workout_id", async (req, res) => {
 
 // POST route to save a completed workout
 router.post("/workout/complete", async (req, res) => {
+  console.log("req", req);
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
 
     const { userId, programId, name, duration, exercises } = req.body;
+    console.log("userId", userId);
 
     // Validate required fields
     if (
@@ -303,6 +305,7 @@ router.post("/workout/complete", async (req, res) => {
     );
 
     // Set old records for this exercise to not current
+
     await client.query(
       `WITH new_records AS (
          SELECT catalog_exercise_id
