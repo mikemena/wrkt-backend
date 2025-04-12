@@ -1,16 +1,16 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
-const { Readable } = require("stream");
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { Readable } = require('stream');
 
 // Configure R2 client
 const r2Client = new S3Client({
-  region: "auto",
+  region: 'auto',
   endpoint: process.env.R2_URL,
   credentials: {
     accessKeyId: process.env.R2_ACCESS_KEY,
-    secretAccessKey: process.env.JWT_SECRET,
-  },
+    secretAccessKey: process.env.R2_SECRET_KEY
+  }
 });
 
 // Cache configuration - store image responses in memory for a short time
@@ -22,7 +22,7 @@ const CACHE_TTL = 60 * 60 * 1000; // 1 hour in milliseconds
  * GET /api/exercise-images/:imageName
  * Example: /api/exercise-images/ab-wheel.gif
  */
-router.get("/exercise-images/:imageName", async (req, res) => {
+router.get('/exercise-images/:imageName', async (req, res) => {
   try {
     const imageName = req.params.imageName;
     const bucketName = process.env.R2_BUCKET_NAME; // e.g., 'pow'
@@ -33,16 +33,16 @@ router.get("/exercise-images/:imageName", async (req, res) => {
 
     if (cachedImage && Date.now() < cachedImage.expiresAt) {
       // Set appropriate headers from cached data
-      res.set("Content-Type", cachedImage.contentType);
-      res.set("Content-Length", cachedImage.contentLength);
-      res.set("Cache-Control", "public, max-age=86400"); // 24 hours browser caching
+      res.set('Content-Type', cachedImage.contentType);
+      res.set('Content-Length', cachedImage.contentLength);
+      res.set('Cache-Control', 'public, max-age=86400'); // 24 hours browser caching
       return res.send(cachedImage.data);
     }
 
     // If not in cache, fetch from R2
     const command = new GetObjectCommand({
       Bucket: bucketName,
-      Key: imageName,
+      Key: imageName
     });
 
     const r2Response = await r2Client.send(command);
@@ -50,15 +50,15 @@ router.get("/exercise-images/:imageName", async (req, res) => {
     // Set content type based on file extension
     const contentType =
       r2Response.ContentType || getContentTypeFromFileName(imageName);
-    res.set("Content-Type", contentType);
+    res.set('Content-Type', contentType);
 
     // Set content length if available
     if (r2Response.ContentLength) {
-      res.set("Content-Length", r2Response.ContentLength);
+      res.set('Content-Length', r2Response.ContentLength);
     }
 
     // Set cache control headers
-    res.set("Cache-Control", "public, max-age=86400"); // 24 hours browser caching
+    res.set('Cache-Control', 'public, max-age=86400'); // 24 hours browser caching
 
     // Stream response to client
     if (r2Response.Body instanceof Readable) {
@@ -76,7 +76,7 @@ router.get("/exercise-images/:imageName", async (req, res) => {
         data: buffer,
         contentType,
         contentLength: r2Response.ContentLength,
-        expiresAt: Date.now() + CACHE_TTL,
+        expiresAt: Date.now() + CACHE_TTL
       });
     } else {
       // Fallback for other types
@@ -87,7 +87,7 @@ router.get("/exercise-images/:imageName", async (req, res) => {
         data: buffer,
         contentType,
         contentLength: buffer.length,
-        expiresAt: Date.now() + CACHE_TTL,
+        expiresAt: Date.now() + CACHE_TTL
       });
 
       res.send(Buffer.from(buffer));
@@ -99,14 +99,14 @@ router.get("/exercise-images/:imageName", async (req, res) => {
       cleanupCache();
     }
   } catch (error) {
-    console.error("Error fetching image from R2:", error);
+    console.error('Error fetching image from R2:', error);
 
     // Return appropriate error response
-    if (error.name === "NoSuchKey") {
-      return res.status(404).send("Image not found");
+    if (error.name === 'NoSuchKey') {
+      return res.status(404).send('Image not found');
     }
 
-    res.status(500).send("Error fetching image");
+    res.status(500).send('Error fetching image');
   }
 });
 
@@ -114,17 +114,17 @@ router.get("/exercise-images/:imageName", async (req, res) => {
  * Helper function to determine content type from filename
  */
 function getContentTypeFromFileName(filename) {
-  const extension = filename.split(".").pop().toLowerCase();
+  const extension = filename.split('.').pop().toLowerCase();
   const contentTypes = {
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    png: "image/png",
-    gif: "image/gif",
-    webp: "image/webp",
-    svg: "image/svg+xml",
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    svg: 'image/svg+xml'
   };
 
-  return contentTypes[extension] || "application/octet-stream";
+  return contentTypes[extension] || 'application/octet-stream';
 }
 
 /**
