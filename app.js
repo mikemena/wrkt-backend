@@ -120,6 +120,7 @@ app.use((err, req, res, next) => {
 
 // Import routes
 const imageRoutes = require("./routes/images");
+const imageProxyRoutes = require("./routes/image_proxy");
 const musclesRoutes = require("./routes/muscles");
 const equipmentsRoutes = require("./routes/equipment_catalog");
 const exerciseCatalogRoutes = require("./routes/exercise_catalog");
@@ -136,6 +137,7 @@ const healthRoutes = require("./routes/health");
 
 // Use your routes with a base path
 app.use("/api", imageRoutes);
+app.use("/api", imageProxyRoutes);
 app.use("/api", musclesRoutes);
 app.use("/api", equipmentsRoutes);
 app.use("/api", exerciseCatalogRoutes);
