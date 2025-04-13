@@ -12,9 +12,17 @@ router.get('/users/:userId/equipment', async (req, res) => {
       return res.status(400).json({ error: 'User ID is required' });
     }
 
-    // Get the equipment IDs for this user
+    // Check if the user exists
+    const userCheck = await db.query('SELECT id FROM users WHERE id = $1', [
+      userId
+    ]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get the equipment for this user
     const userEquipmentQuery = await db.query(
-      `SELECT e.id, e.name
+      `SELECT e.name
        FROM equipment_catalog e
        JOIN user_equipment ue ON e.id = ue.equipment_id
        WHERE ue.user_id = $1
@@ -45,7 +53,17 @@ router.put('/users/:userId/equipment', async (req, res) => {
       return res.status(400).json({ error: 'User ID is required' });
     }
 
+    // Check if the user exists
+    const userCheck = await client.query('SELECT id FROM users WHERE id = $1', [
+      userId
+    ]);
+    if (userCheck.rows.length === 0) {
+      client.release();
+      return res.status(404).json({ error: 'User not found' });
+    }
+
     if (!equipment || !Array.isArray(equipment)) {
+      client.release();
       return res
         .status(400)
         .json({ error: 'Equipment must be provided as an array' });
