@@ -38,7 +38,7 @@ router.get('/users/:userId/equipment', async (req, res) => {
     console.log(
       `Found ${equipmentNames.length} equipment items for user ${userId}`
     );
-    res.json({ equipment: equipmentNames });
+    res.json(equipmentNames);
   } catch (error) {
     console.error('Error fetching user equipment:', error);
     res.status(500).json({ error: 'Failed to fetch user equipment' });
